@@ -1,0 +1,22 @@
+# python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# node
+node_modules/
+.next/
+out/
+
+# app data / caches
+backend/data/
+logs/
+
+# build artifacts
+mac-app/dist/
+dist/
+
+# mac/windows
+.DS_Store
+Thumbs.db

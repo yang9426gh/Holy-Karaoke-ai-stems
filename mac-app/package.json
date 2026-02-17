@@ -1,0 +1,78 @@
+{
+  "name": "holy-karaoke",
+  "version": "0.1.0",
+  "private": true,
+  "main": "main.js",
+  "description": "Holy Karaoke (local)",
+  "scripts": {
+    "dev": "electron .",
+    "dist:mac": "electron-builder --mac dmg",
+    "dist:win": "electron-builder --win nsis",
+    "dist": "electron-builder"
+  },
+  "author": "shy",
+  "devDependencies": {
+    "electron": "^30.0.0",
+    "electron-builder": "^24.13.3"
+  },
+  "build": {
+    "appId": "bot.clawd.holykaraokestems",
+    "productName": "Holy Karaoke Stems",
+    "mac": {
+      "category": "public.app-category.music",
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "arm64"
+          ]
+        }
+      ],
+      "hardenedRuntime": false,
+      "gatekeeperAssess": false
+    },
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowElevation": true,
+      "allowToChangeInstallationDirectory": true
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "installer/**"
+    ],
+    "extraResources": [
+      {
+        "from": "../",
+        "to": "app",
+        "filter": [
+          "backend/**",
+          "!backend/data/**",
+          "!backend/venv/**",
+          "!backend/__pycache__/**",
+          "frontend/**",
+          "backend-bin/**",
+          "start_stems.sh",
+          "start_holy.sh",
+          "stop_holy.sh",
+          "stop_stems.sh"
+        ]
+      }
+    ],
+    "dmg": {
+      "artifactName": "HolyKaraoke-${version}-${arch}.dmg"
+    },
+    "artifactName": "HolyKaraoke-${version}-${os}-${arch}.${ext}"
+  }
+}

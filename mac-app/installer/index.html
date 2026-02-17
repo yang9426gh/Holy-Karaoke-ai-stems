@@ -1,0 +1,111 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Holy Karaoke</title>
+  <style>
+    body{font-family:-apple-system,system-ui; padding:24px; background:#0b0b0f; color:#eaeaf2}
+    .card{border:1px solid #2a2a35; border-radius:16px; padding:18px; background:#11111a}
+    button{padding:10px 12px; border-radius:10px; border:1px solid #2a2a35; background:#1a1a26; color:#eaeaf2; cursor:pointer}
+    button:disabled{opacity:.5; cursor:not-allowed}
+    .row{display:flex; gap:10px; margin-top:12px}
+    .muted{color:#a3a3b6; font-size:12px; margin-top:10px; line-height:1.35}
+    #status{margin-top:12px; font-size:11px; color:#c9c9dd; white-space:pre-wrap; max-height:160px; overflow:auto; border-top:1px solid #2a2a35; padding-top:10px}
+    .bar{height:8px; background:#232332; border-radius:999px; overflow:hidden; margin-top:10px}
+    .bar > div{height:100%; background:#4f86ff; width:0%}
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h2 style="margin:0 0 8px 0">Holy Karaoke</h2>
+    <div class="muted">
+      This app runs locally (http://localhost:3000). First run may take a while to install dependencies.
+      Requires: Node.js/npm, Python 3, and internet access for pip/npm.
+    </div>
+
+    <div class="row">
+      <button id="install">Install Dependencies</button>
+      <button id="start">Start & Open</button>
+    </div>
+
+    <label style="display:flex; gap:10px; align-items:center; margin-top:12px; font-size:12px; color:#c9c9dd;">
+      <input id="useCookies" type="checkbox" checked />
+      Use Chrome cookies for YouTube (recommended)
+    </label>
+    <div class="muted" style="margin-top:6px">
+      If YouTube shows bot-check errors, enable this and make sure you're logged into YouTube in Chrome.
+    </div>
+
+    <div class="bar"><div id="bar"></div></div>
+    <div id="phase" class="muted" style="margin-top:8px"></div>
+    <div id="status"></div>
+  </div>
+
+<script>
+const elStatus = document.getElementById('status');
+const elPhase = document.getElementById('phase');
+const elBar = document.getElementById('bar');
+const btnInstall = document.getElementById('install');
+const btnStart = document.getElementById('start');
+
+function appendLog(s){
+  elStatus.textContent += s;
+  elStatus.scrollTop = elStatus.scrollHeight;
+}
+function setPhase(name, step, total){
+  elPhase.textContent = name ? `${name} (${step}/${total})` : '';
+  const pct = total ? Math.round((step/total)*100) : 0;
+  elBar.style.width = `${pct}%`;
+}
+
+window.holy.onLog((msg) => appendLog(String(msg)));
+window.holy.onPhase((p) => setPhase(p?.name || '', Number(p?.step||0), Number(p?.total||0)));
+
+// Load/save config
+const chkCookies = document.getElementById('useCookies');
+(async () => {
+  try {
+    const cfg = await window.holy.getConfig();
+    chkCookies.checked = cfg?.useCookies !== false;
+  } catch {}
+})();
+
+chkCookies.addEventListener('change', async () => {
+  try {
+    await window.holy.setConfig({ useCookies: chkCookies.checked, cookiesFromBrowser: 'chrome' });
+  } catch {}
+});
+
+btnInstall.onclick = async () => {
+  btnInstall.disabled = true;
+  btnStart.disabled = true;
+  elStatus.textContent = '';
+  setPhase('Starting…', 0, 4);
+  appendLog('Installing… this can take several minutes.\n');
+  try{
+    await window.holy.install();
+    setPhase('Done', 4, 4);
+    appendLog('\n✅ Install complete. Click Start & Open.\n');
+  }catch(e){
+    appendLog('\n❌ Install failed: ' + (e?.message || e) + '\n');
+  } finally {
+    btnInstall.disabled = false;
+    btnStart.disabled = false;
+  }
+};
+
+btnStart.onclick = async () => {
+  btnStart.disabled = true;
+  appendLog('\nStarting services…\n');
+  try{
+    await window.holy.start();
+    appendLog('✅ Started. If the browser didn\'t open: http://localhost:3000\n');
+  }catch(e){
+    appendLog('❌ Start failed: ' + (e?.message || e) + '\n');
+  } finally {
+    btnStart.disabled = false;
+  }
+};
+</script>
+</body>
+</html>
