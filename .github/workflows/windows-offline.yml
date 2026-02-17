@@ -76,12 +76,20 @@ jobs:
           python -m pip install pyinstaller
           pyinstaller -y pyinstaller_backend.spec
 
-      - name: Stage backend exe into backend-bin/
+      - name: Stage backend (PyInstaller one-folder) into backend-bin/
         run: |
           New-Item -ItemType Directory -Force -Path backend-bin | Out-Null
-          $exe = Get-ChildItem -Recurse -Filter holy-backend.exe backend\dist\holy-backend | Select-Object -First 1
-          if (!$exe) { throw "holy-backend.exe not found" }
-          Copy-Item $exe.FullName -Destination backend-bin\holy-backend.exe -Force
+
+          $src = "backend\\dist\\holy-backend"
+          if (!(Test-Path $src)) { throw "PyInstaller output folder not found: $src" }
+
+          # Copy the entire one-folder distribution (exe + dll/pyd/libs)
+          Copy-Item -Recurse -Force "$src\\*" -Destination backend-bin
+
+          if (!(Test-Path "backend-bin\\holy-backend.exe")) {
+            $exe = Get-ChildItem -Recurse -Filter holy-backend.exe backend-bin | Select-Object -First 1
+            throw "holy-backend.exe not found in backend-bin (found: $($exe.FullName))"
+          }
 
       - name: Build Electron Windows installer (NSIS)
         working-directory: mac-app
