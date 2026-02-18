@@ -199,6 +199,8 @@ async function startServices(root) {
       cwd: path.dirname(backendExe),
       env: {
         ...process.env,
+        HOLY_HOST: '127.0.0.1',
+        HOLY_PORT: '8011',
         HOLY_DATA_DIR: dataDir,
         HOLY_DEMUCS_MODEL: 'htdemucs_6s',
         HOLY_YTDLP_COOKIES_FROM_BROWSER: '',

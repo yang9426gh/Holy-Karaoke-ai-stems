@@ -1658,4 +1658,12 @@ except Exception:
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+
+    host = os.environ.get("HOLY_HOST") or os.environ.get("HOST") or "127.0.0.1"
+    port_s = os.environ.get("HOLY_PORT") or os.environ.get("PORT") or "8011"
+    try:
+        port = int(port_s)
+    except Exception:
+        port = 8011
+
+    uvicorn.run(app, host=host, port=port)
