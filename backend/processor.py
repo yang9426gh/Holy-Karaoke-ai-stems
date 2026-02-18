@@ -400,11 +400,15 @@ def separate_stems(
             output_dir,
         ]
 
+        # On macOS we can try Apple Silicon MPS; on Windows/Linux, force CPU.
         try:
-            _run("mps", args_base)
+            if sys.platform == "darwin":
+                _run("mps", args_base)
+            else:
+                raise RuntimeError("non-mac: skip mps")
         except Exception:
             # CPU fallback (works on Windows)
-            demucs_main(args_base + [input_file])
+            demucs_main(args_base + ["--device", "cpu", input_file])
 
         if progress_cb:
             progress_cb(100)
