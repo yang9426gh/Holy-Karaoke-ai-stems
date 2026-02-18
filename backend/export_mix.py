@@ -4,7 +4,9 @@ from typing import Dict, List, Tuple
 
 
 def _ffmpeg_bin() -> str:
-    return os.environ.get("HOLY_FFMPEG", "/opt/homebrew/bin/ffmpeg")
+    from bin_utils import resolve_ffmpeg
+
+    return resolve_ffmpeg()
 
 
 def mixdown_to_mp3(stems: Dict[str, str], gains: Dict[str, float], out_mp3: str, *, bitrate: str = "320k") -> str:

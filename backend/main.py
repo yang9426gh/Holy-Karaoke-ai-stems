@@ -1225,8 +1225,10 @@ def ensure_transposed(task_id: str, semitones: int):
 
     def run(src: str, dst: str):
         # Prefer Rubber Band (R3 engine + formant preservation) for much better quality.
-        rb = "/opt/homebrew/bin/rubberband"
-        if os.path.exists(rb):
+        from bin_utils import resolve_rubberband
+
+        rb = resolve_rubberband()
+        if rb and os.path.exists(rb):
             # -3 fine engine, -F formant, --centre-focus for stereo, -q quiet
             subprocess.run(
                 [
@@ -1260,10 +1262,12 @@ def ensure_transposed(task_id: str, semitones: int):
             at /= 2.0
         at_filters.append(f"atempo={at:.6f}")
 
+        from bin_utils import resolve_ffmpeg
+
         af = f"asetrate=44100*{factor:.8f},aresample=44100," + ",".join(at_filters)
         subprocess.run(
             [
-                "/opt/homebrew/bin/ffmpeg",
+                resolve_ffmpeg(),
                 "-y",
                 "-i",
                 src,
@@ -1441,9 +1445,11 @@ def _resync_task(video_id: str, task_id: str, output_dir: str, vocals_path: str,
         whisper_in = os.path.join(output_dir, "whisper_in.wav")
         try:
             import subprocess
+            from bin_utils import resolve_ffmpeg
+
             subprocess.run(
                 [
-                    "/opt/homebrew/bin/ffmpeg",
+                    resolve_ffmpeg(),
                     "-y",
                     "-i",
                     src_audio,

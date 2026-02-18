@@ -5,14 +5,15 @@ import time
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from typing import Dict, Tuple
 
+from bin_utils import resolve_ffmpeg, resolve_rubberband
+
 
 def transpose_wav(src: str, dst: str, semitones: int, *, stem_name: str | None = None) -> None:
     os.makedirs(os.path.dirname(dst), exist_ok=True)
 
-    rb = "/opt/homebrew/bin/rubberband"
-    if os.path.exists(rb):
+    rb = resolve_rubberband()
+    if rb and os.path.exists(rb):
         # Quality-first: use the finer R3 engine + formant preservation.
-        # Parallelism (ProcessPool) still provides the speedup.
         args = [
             rb,
             "-3",
@@ -27,15 +28,12 @@ def transpose_wav(src: str, dst: str, semitones: int, *, stem_name: str | None =
             dst,
         ]
 
-        subprocess.run(
-            args,
-            check=True,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-        )
+        subprocess.run(args, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         return
 
     # fallback ffmpeg (lower quality)
+    ffmpeg = resolve_ffmpeg()
+
     factor = 2 ** (float(semitones) / 12.0)
     inv = 1.0 / factor
     at = inv
@@ -51,7 +49,7 @@ def transpose_wav(src: str, dst: str, semitones: int, *, stem_name: str | None =
     af = f"asetrate=44100*{factor:.8f},aresample=44100," + ",".join(at_filters)
     subprocess.run(
         [
-            "/opt/homebrew/bin/ffmpeg",
+            ffmpeg,
             "-y",
             "-i",
             src,
