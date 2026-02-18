@@ -52,6 +52,16 @@ def _maybe_add_js_runtime_args(cmd: list[str]) -> list[str]:
     return cmd
 
 
+def _vendor_exe(name: str) -> str | None:
+    vd = _vendor_dir()
+    if not vd:
+        return None
+    for cand in [os.path.join(vd, name), os.path.join(vd, f"{name}.exe")]:
+        if os.path.exists(cand):
+            return cand
+    return None
+
+
 def download_youtube_audio(
     url: str,
     output_path: str,
@@ -60,34 +70,65 @@ def download_youtube_audio(
     proc_cb: Optional[Callable[[subprocess.Popen], None]] = None,
     progress_cb: Optional[Callable[[int], None]] = None,
 ) -> str:
+    """Download audio using yt-dlp.
+
+    IMPORTANT for PyInstaller builds: do NOT spawn sys.executable -m yt_dlp,
+    because sys.executable points to the packaged backend server exe.
+    Prefer vendor yt-dlp.exe when available.
+    """
     print(f"[*] Downloading audio from: {url}")
+
+    ytdlp_exe = _vendor_exe("yt-dlp")
+    if not ytdlp_exe:
+        # fallback: run via python API in-process
+        try:
+            import yt_dlp
+
+            outtmpl = os.path.join(output_path, "original.%(ext)s")
+            opts = {
+                "outtmpl": outtmpl,
+                "nocheckcertificate": True,
+                "format": "bestaudio/best",
+                "postprocessors": [
+                    {
+                        "key": "FFmpegExtractAudio",
+                        "preferredcodec": "wav",
+                    }
+                ],
+                "progress_hooks": [
+                    lambda d: progress_cb(int(float(d.get("_percent_str", "0").strip("%"))))
+                    if progress_cb and d.get("status") == "downloading" and d.get("_percent_str")
+                    else None
+                ],
+            }
+            with yt_dlp.YoutubeDL(opts) as ydl:
+                ydl.download([url])
+        except Exception as e:
+            raise RuntimeError(f"yt-dlp python API failed: {e}")
+        return os.path.join(output_path, "original.wav")
+
     cmd = [
-        sys.executable,
-        "-m",
-        "yt_dlp",
+        ytdlp_exe,
         "--no-check-certificate",
-    ]
-
-    # Optional: use cookies from a local browser profile to avoid bot checks.
-    # Enable by setting HOLY_YTDLP_COOKIES_FROM_BROWSER=chrome|edge|firefox|safari
-    cfb = os.environ.get("HOLY_YTDLP_COOKIES_FROM_BROWSER", "").strip()
-    if cfb:
-        cmd += ["--cookies-from-browser", cfb]
-
-    cmd = _maybe_add_js_runtime_args(cmd)
-
-    cmd += [
         "-x",
         "--audio-format",
         "wav",
         "-o",
-        f"{output_path}/original.%(ext)s",
-        url,
+        os.path.join(output_path, "original.%(ext)s"),
     ]
+
+    cfb = os.environ.get("HOLY_YTDLP_COOKIES_FROM_BROWSER", "").strip()
+    if cfb:
+        cmd += ["--cookies-from-browser", cfb]
+
+    # JS runtime is optional; enable only if configured and present.
+    cmd = _maybe_add_js_runtime_args(cmd)
 
     vd = _vendor_dir()
     if vd:
         cmd += ["--ffmpeg-location", vd]
+
+    cmd += [url]
 
     proc = subprocess.Popen(
         cmd,
@@ -102,6 +143,7 @@ def download_youtube_audio(
         proc_cb(proc)
 
     import re
+
     pct_re = re.compile(r"\[download\]\s+(\d{1,3}(?:\.\d+)?)%")
 
     while True:
@@ -131,7 +173,7 @@ def download_youtube_audio(
     if rc != 0:
         raise subprocess.CalledProcessError(rc, cmd)
 
-    return f"{output_path}/original.wav"
+    return os.path.join(output_path, "original.wav")
 
 
 def download_youtube_video(
@@ -143,7 +185,11 @@ def download_youtube_video(
     proc_cb: Optional[Callable[[subprocess.Popen], None]] = None,
     progress_cb: Optional[Callable[[int], None]] = None,
 ) -> str:
-    """Download a playable MP4 for local <video> playback."""
+    """Download a playable MP4 for local <video> playback.
+
+    IMPORTANT for PyInstaller builds: do NOT spawn sys.executable -m yt_dlp.
+    Prefer vendor yt-dlp.exe when available.
+    """
     out = os.path.join(output_path, "video.mp4")
     if os.path.exists(out) and os.path.getsize(out) > 1024 * 1024:
         if progress_cb:
@@ -156,10 +202,34 @@ def download_youtube_video(
         f"best[height<={max_height}][ext=mp4]/best[height<={max_height}]"
     )
 
+    ytdlp_exe = _vendor_exe("yt-dlp")
+    if not ytdlp_exe:
+        # fallback: python API in-process
+        try:
+            import yt_dlp
+
+            opts = {
+                "outtmpl": out,
+                "nocheckcertificate": True,
+                "format": fmt,
+                "merge_output_format": "mp4",
+                "progress_hooks": [
+                    lambda d: progress_cb(int(float(d.get("_percent_str", "0").strip("%"))))
+                    if progress_cb and d.get("status") == "downloading" and d.get("_percent_str")
+                    else None
+                ],
+            }
+            with yt_dlp.YoutubeDL(opts) as ydl:
+                ydl.download([url])
+        except Exception as e:
+            raise RuntimeError(f"yt-dlp python API failed: {e}")
+
+        if progress_cb:
+            progress_cb(100)
+        return out
+
     cmd = [
-        sys.executable,
-        "-m",
-        "yt_dlp",
+        ytdlp_exe,
         "--no-check-certificate",
     ]
 
@@ -176,12 +246,13 @@ def download_youtube_video(
         "mp4",
         "-o",
         out,
-        url,
     ]
 
     vd = _vendor_dir()
     if vd:
         cmd += ["--ffmpeg-location", vd]
+
+    cmd += [url]
 
     proc = subprocess.Popen(
         cmd,
@@ -196,6 +267,7 @@ def download_youtube_video(
         proc_cb(proc)
 
     import re
+
     pct_re = re.compile(r"\[download\]\s+(\d{1,3}(?:\.\d+)?)%")
 
     while True:
@@ -255,105 +327,39 @@ def separate_stems(
         output_dir,
     ]
 
-    # Try Apple Silicon acceleration (MPS) first; if it fails, fall back to CPU.
-    cmd = base_cmd + ["--device", "mps", input_file]
-    print(f"[*] Demucs cmd (try mps): {' '.join(cmd)}")
+    # In packaged builds (PyInstaller), sys.executable points to the backend server exe.
+    # Spawning subprocesses like "sys.executable -m demucs.separate" can accidentally
+    # start another server instance. So we run Demucs in-process.
+    try:
+        from demucs.separate import main as demucs_main
 
-    proc = subprocess.Popen(
-        cmd,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        text=True,
-        bufsize=1,
-        universal_newlines=True,
-        env=_with_vendor_env(),
-    )
-    if proc_cb:
-        proc_cb(proc)
+        def _run(device: str, args_base: list[str]):
+            # demucs_main expects argv-like list
+            print(f"[*] Demucs (in-process) device={device}")
+            return demucs_main(args_base + ["--device", device, input_file])
 
-    import re
+        args_base = [
+            "--name",
+            model_name,
+            "-o",
+            output_dir,
+        ]
 
-    percent_re = re.compile(r"(\d{1,3})%\|")
+        try:
+            _run("mps", args_base)
+        except Exception:
+            # CPU fallback (works on Windows)
+            demucs_main(args_base + [input_file])
 
-    last_percent = None
-    while True:
-        if cancel_cb and cancel_cb():
-            try:
-                proc.terminate()
-            except Exception:
-                pass
-            raise RuntimeError("cancelled")
+        if progress_cb:
+            progress_cb(100)
 
-        chunk = proc.stdout.readline() if proc.stdout else ""
-        if chunk == "" and proc.poll() is not None:
-            break
-        if not chunk:
-            continue
+        dt = time.time() - t0
+        print(f"[+] Separation completed! ({dt:.1f}s)")
+        return
 
-        m = percent_re.search(chunk)
-        if m:
-            try:
-                p = int(m.group(1))
-                if progress_cb and p != last_percent and 0 <= p <= 100:
-                    progress_cb(p)
-                last_percent = p
-            except Exception:
-                pass
-
-        print(chunk, end="")
-
-    rc = proc.wait()
-    if rc != 0:
-        # MPS might not be available depending on torch build; retry on CPU once.
-        cmd2 = base_cmd + [input_file]
-        print(f"[!] Demucs mps failed (rc={rc}). Retrying on CPU: {' '.join(cmd2)}")
-        proc2 = subprocess.Popen(
-            cmd2,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-            text=True,
-            bufsize=1,
-            universal_newlines=True,
-        )
-        if proc_cb:
-            proc_cb(proc2)
-
-        last_percent = None
-        while True:
-            if cancel_cb and cancel_cb():
-                try:
-                    proc2.terminate()
-                except Exception:
-                    pass
-                raise RuntimeError("cancelled")
-
-            chunk = proc2.stdout.readline() if proc2.stdout else ""
-            if chunk == "" and proc2.poll() is not None:
-                break
-            if not chunk:
-                continue
-
-            m = percent_re.search(chunk)
-            if m:
-                try:
-                    p = int(m.group(1))
-                    if progress_cb and p != last_percent and 0 <= p <= 100:
-                        progress_cb(p)
-                    last_percent = p
-                except Exception:
-                    pass
-
-            print(chunk, end="")
-
-        rc2 = proc2.wait()
-        if rc2 != 0:
-            raise subprocess.CalledProcessError(rc2, cmd2)
-
-    if progress_cb:
-        progress_cb(100)
-
-    dt = time.time() - t0
-    print(f"[+] Separation completed! ({dt:.1f}s)")
+    except Exception as e:
+        raise RuntimeError(f"Demucs failed: {e}")
 
 if __name__ == "__main__":
     # 테스트용 (유튜브 URL을 인자로 받음)
