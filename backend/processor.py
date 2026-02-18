@@ -2,7 +2,54 @@ import os
 import sys
 import subprocess
 import time
+import shutil
 from typing import Callable, Optional
+
+
+def _vendor_dir() -> str | None:
+    """Return path to bundled vendor binaries if present (PyInstaller)."""
+    try:
+        base = getattr(sys, "_MEIPASS", None)
+        if base:
+            cand = os.path.join(base, "vendor")
+            if os.path.isdir(cand):
+                return cand
+    except Exception:
+        pass
+
+    # dev/workspace
+    cand2 = os.path.join(os.path.dirname(__file__), "vendor")
+    if os.path.isdir(cand2):
+        return cand2
+
+    return None
+
+
+def _with_vendor_env(env: dict | None = None) -> dict:
+    out = dict(env or os.environ)
+    vd = _vendor_dir()
+    if vd:
+        out["PATH"] = vd + os.pathsep + out.get("PATH", "")
+    return out
+
+
+def _maybe_add_js_runtime_args(cmd: list[str]) -> list[str]:
+    # On Windows offline builds, node might not exist. Only enable js runtimes if we can find it.
+    jsr = os.environ.get("HOLY_YTDLP_JS_RUNTIMES", "node").strip()
+    if not jsr:
+        return cmd
+
+    # If configured as "node" (default), ensure it's actually available
+    if jsr == "node" and not shutil.which("node"):
+        return cmd
+
+    cmd += ["--js-runtimes", jsr]
+
+    rc = os.environ.get("HOLY_YTDLP_REMOTE_COMPONENTS", "ejs:github").strip()
+    if rc:
+        cmd += ["--remote-components", rc]
+
+    return cmd
 
 
 def download_youtube_audio(
@@ -27,18 +74,7 @@ def download_youtube_audio(
     if cfb:
         cmd += ["--cookies-from-browser", cfb]
 
-    # Optional: enable JS runtime for signature/challenge solving.
-    # Without it, some videos show: "Only images are available" / "Requested format is not available".
-    # Enable by setting HOLY_YTDLP_JS_RUNTIMES=node|deno|bun|node:/path/to/node
-    jsr = os.environ.get("HOLY_YTDLP_JS_RUNTIMES", "node").strip()
-    if jsr:
-        cmd += ["--js-runtimes", jsr]
-
-    # EJS remote components can be required for JS challenge solving on YouTube.
-    # Default to enabling; can be disabled by setting HOLY_YTDLP_REMOTE_COMPONENTS="".
-    rc = os.environ.get("HOLY_YTDLP_REMOTE_COMPONENTS", "ejs:github").strip()
-    if rc:
-        cmd += ["--remote-components", rc]
+    cmd = _maybe_add_js_runtime_args(cmd)
 
     cmd += [
         "-x",
@@ -49,6 +85,10 @@ def download_youtube_audio(
         url,
     ]
 
+    vd = _vendor_dir()
+    if vd:
+        cmd += ["--ffmpeg-location", vd]
+
     proc = subprocess.Popen(
         cmd,
         stdout=subprocess.PIPE,
@@ -56,6 +96,7 @@ def download_youtube_audio(
         text=True,
         bufsize=1,
         universal_newlines=True,
+        env=_with_vendor_env(),
     )
     if proc_cb:
         proc_cb(proc)
@@ -126,13 +167,7 @@ def download_youtube_video(
     if cfb:
         cmd += ["--cookies-from-browser", cfb]
 
-    jsr = os.environ.get("HOLY_YTDLP_JS_RUNTIMES", "node").strip()
-    if jsr:
-        cmd += ["--js-runtimes", jsr]
-
-    rc = os.environ.get("HOLY_YTDLP_REMOTE_COMPONENTS", "ejs:github").strip()
-    if rc:
-        cmd += ["--remote-components", rc]
+    cmd = _maybe_add_js_runtime_args(cmd)
 
     cmd += [
         "-f",
@@ -144,6 +179,10 @@ def download_youtube_video(
         url,
     ]
 
+    vd = _vendor_dir()
+    if vd:
+        cmd += ["--ffmpeg-location", vd]
+
     proc = subprocess.Popen(
         cmd,
         stdout=subprocess.PIPE,
@@ -151,6 +190,7 @@ def download_youtube_video(
         text=True,
         bufsize=1,
         universal_newlines=True,
+        env=_with_vendor_env(),
     )
     if proc_cb:
         proc_cb(proc)
@@ -226,6 +266,7 @@ def separate_stems(
         text=True,
         bufsize=1,
         universal_newlines=True,
+        env=_with_vendor_env(),
     )
     if proc_cb:
         proc_cb(proc)
