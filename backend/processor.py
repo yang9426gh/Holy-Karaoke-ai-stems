@@ -317,16 +317,6 @@ def separate_stems(
     print(f"[*] Separating stems using AI (Demucs model={model_name})...")
     t0 = time.time()
 
-    base_cmd = [
-        sys.executable,
-        "-m",
-        "demucs.separate",
-        "--name",
-        model_name,
-        "-o",
-        output_dir,
-    ]
-
     # In packaged builds (PyInstaller), sys.executable points to the backend server exe.
     # Spawning subprocesses like "sys.executable -m demucs.separate" can accidentally
     # start another server instance. So we run Demucs in-process.
