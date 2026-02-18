@@ -125,7 +125,10 @@ def download_youtube_audio(
     cmd = _maybe_add_js_runtime_args(cmd)
 
     vd = _vendor_dir()
-    if vd:
+    ff = _vendor_exe("ffmpeg")
+    if ff:
+        cmd += ["--ffmpeg-location", ff]
+    elif vd:
         cmd += ["--ffmpeg-location", vd]
 
     cmd += [url]
@@ -249,7 +252,10 @@ def download_youtube_video(
     ]
 
     vd = _vendor_dir()
-    if vd:
+    ff = _vendor_exe("ffmpeg")
+    if ff:
+        cmd += ["--ffmpeg-location", ff]
+    elif vd:
         cmd += ["--ffmpeg-location", vd]
 
     cmd += [url]
