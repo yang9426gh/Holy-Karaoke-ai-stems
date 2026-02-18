@@ -27,8 +27,10 @@ hiddenimports += collect_submodules('uvicorn')
 # to avoid: FileNotFoundError: No translation file found for domain: 'base'
 yt_data = collect_data_files('ytmusicapi')
 
-# If you use demucs/torch, you may need additional hidden imports.
-# hiddenimports += collect_submodules('demucs')
+# Demucs needs package data under demucs/remote (e.g. remote/files.txt)
+# and a bunch of internal modules.
+hiddenimports += collect_submodules('demucs')
+demucs_data = collect_data_files('demucs', includes=['remote/*'])
 
 # Bundle static frontend (Next export)
 web_datas = collect_tree(os.path.join('..', 'frontend', 'out'), os.path.join('frontend', 'out'))
@@ -49,7 +51,7 @@ a = Analysis(
     ['main.py'],
     pathex=['.'],
     binaries=[],
-    datas=web_datas + backend_datas + vendor_datas + yt_data,
+    datas=web_datas + backend_datas + vendor_datas + yt_data + demucs_data,
     hiddenimports=hiddenimports,
     hookspath=[],
     hooksconfig={},
