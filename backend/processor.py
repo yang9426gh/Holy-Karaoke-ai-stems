@@ -133,15 +133,47 @@ def download_youtube_audio(
 
     cmd += [url]
 
-    proc = subprocess.Popen(
-        cmd,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        text=True,
-        bufsize=1,
-        universal_newlines=True,
-        env=_with_vendor_env(),
-    )
+    try:
+        proc = subprocess.Popen(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            bufsize=1,
+            universal_newlines=True,
+            env=_with_vendor_env(),
+        )
+    except PermissionError as e:
+        # Some Windows environments block executing bundled .exe (SmartScreen/AV/permissions).
+        # Fall back to yt-dlp Python API in-process.
+        print(f"[warn] vendor yt-dlp exec blocked ({e}); falling back to Python yt_dlp")
+        try:
+            import yt_dlp
+
+            outtmpl = os.path.join(output_path, "original.%(ext)s")
+            opts = {
+                "outtmpl": outtmpl,
+                "nocheckcertificate": True,
+                "format": "bestaudio/best",
+                "ffmpeg_location": ff or vd or None,
+                "postprocessors": [
+                    {
+                        "key": "FFmpegExtractAudio",
+                        "preferredcodec": "wav",
+                    }
+                ],
+                "progress_hooks": [
+                    lambda d: progress_cb(int(float(d.get("_percent_str", "0").strip("%"))))
+                    if progress_cb and d.get("status") == "downloading" and d.get("_percent_str")
+                    else None
+                ],
+            }
+            with yt_dlp.YoutubeDL(opts) as ydl:
+                ydl.download([url])
+        except Exception as ee:
+            raise RuntimeError(f"yt-dlp python API failed after PermissionError: {ee}")
+        return os.path.join(output_path, "original.wav")
+
     if proc_cb:
         proc_cb(proc)
 
@@ -260,15 +292,42 @@ def download_youtube_video(
 
     cmd += [url]
 
-    proc = subprocess.Popen(
-        cmd,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        text=True,
-        bufsize=1,
-        universal_newlines=True,
-        env=_with_vendor_env(),
-    )
+    try:
+        proc = subprocess.Popen(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            bufsize=1,
+            universal_newlines=True,
+            env=_with_vendor_env(),
+        )
+    except PermissionError as e:
+        print(f"[warn] vendor yt-dlp exec blocked ({e}); falling back to Python yt_dlp")
+        try:
+            import yt_dlp
+
+            opts = {
+                "outtmpl": out,
+                "nocheckcertificate": True,
+                "format": fmt,
+                "merge_output_format": "mp4",
+                "ffmpeg_location": ff or vd or None,
+                "progress_hooks": [
+                    lambda d: progress_cb(int(float(d.get("_percent_str", "0").strip("%"))))
+                    if progress_cb and d.get("status") == "downloading" and d.get("_percent_str")
+                    else None
+                ],
+            }
+            with yt_dlp.YoutubeDL(opts) as ydl:
+                ydl.download([url])
+        except Exception as ee:
+            raise RuntimeError(f"yt-dlp python API failed after PermissionError: {ee}")
+
+        if progress_cb:
+            progress_cb(100)
+        return out
+
     if proc_cb:
         proc_cb(proc)
 
