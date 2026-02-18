@@ -4,7 +4,20 @@
 #   pyinstaller -y pyinstaller_backend.spec
 
 from PyInstaller.utils.hooks import collect_submodules, collect_data_files
-from PyInstaller.building.datastruct import Tree
+import os
+
+
+def collect_tree(root: str, prefix: str):
+    """Return PyInstaller datas list [(src, dest), ...] for all files under root."""
+    out = []
+    for dirpath, _dirnames, filenames in os.walk(root):
+        for fn in filenames:
+            src = os.path.join(dirpath, fn)
+            rel = os.path.relpath(src, root)
+            dest = os.path.join(prefix, rel)
+            out.append((src, dest))
+    return out
+
 
 hiddenimports = []
 hiddenimports += collect_submodules('fastapi')
@@ -18,7 +31,7 @@ yt_data = collect_data_files('ytmusicapi')
 # hiddenimports += collect_submodules('demucs')
 
 # Bundle static frontend (Next export)
-web_datas = [Tree('../frontend/out', prefix='frontend/out')]
+web_datas = collect_tree(os.path.join('..', 'frontend', 'out'), os.path.join('frontend', 'out'))
 
 # Bundle any backend-side templates/assets if needed
 backend_datas = collect_data_files('.', includes=['requirements.txt'])
@@ -28,7 +41,7 @@ backend_datas = collect_data_files('.', includes=['requirements.txt'])
 # - ffprobe.exe
 # - yt-dlp.exe
 # - rubberband.exe (optional)
-vendor_datas = [Tree('vendor', prefix='vendor')]
+vendor_datas = collect_tree('vendor', 'vendor')
 
 block_cipher = None
 
