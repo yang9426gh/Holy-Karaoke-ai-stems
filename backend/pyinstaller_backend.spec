@@ -9,6 +9,10 @@ hiddenimports = []
 hiddenimports += collect_submodules('fastapi')
 hiddenimports += collect_submodules('uvicorn')
 
+# ytmusicapi uses gettext translations; bundle its locale data
+# to avoid: FileNotFoundError: No translation file found for domain: 'base'
+yt_data = collect_data_files('ytmusicapi')
+
 # If you use demucs/torch, you may need additional hidden imports.
 # hiddenimports += collect_submodules('demucs')
 
@@ -30,7 +34,7 @@ a = Analysis(
     ['main.py'],
     pathex=['.'],
     binaries=[],
-    datas=web_datas + backend_datas + vendor_datas,
+    datas=web_datas + backend_datas + vendor_datas + yt_data,
     hiddenimports=hiddenimports,
     hookspath=[],
     hooksconfig={},
