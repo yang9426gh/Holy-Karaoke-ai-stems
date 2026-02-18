@@ -4,6 +4,7 @@
 #   pyinstaller -y pyinstaller_backend.spec
 
 from PyInstaller.utils.hooks import collect_submodules, collect_data_files
+from PyInstaller.building.datastruct import Tree
 
 hiddenimports = []
 hiddenimports += collect_submodules('fastapi')
@@ -17,16 +18,17 @@ yt_data = collect_data_files('ytmusicapi')
 # hiddenimports += collect_submodules('demucs')
 
 # Bundle static frontend (Next export)
-web_datas = [('../frontend/out', 'frontend/out')]
+web_datas = [Tree('../frontend/out', prefix='frontend/out')]
 
 # Bundle any backend-side templates/assets if needed
 backend_datas = collect_data_files('.', includes=['requirements.txt'])
 
-# Optional: vendor binaries (put windows builds here)
+# Vendor binaries (offline)
 # - ffmpeg.exe
+# - ffprobe.exe
 # - yt-dlp.exe
-# - rubberband.exe (if available)
-vendor_datas = collect_data_files('vendor', includes=['**/*'])
+# - rubberband.exe (optional)
+vendor_datas = [Tree('vendor', prefix='vendor')]
 
 block_cipher = None
 
