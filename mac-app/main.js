@@ -16,6 +16,12 @@ function userAppDir() {
   return path.join(app.getPath('userData'), 'app');
 }
 
+function appRootDir() {
+  // For Windows offline builds, run directly from packaged resources (no copy),
+  // because the backend exe + _internal DLLs must remain adjacent.
+  return process.platform === 'win32' ? resourcesAppDir() : userAppDir();
+}
+
 function installMarkerPath() {
   return path.join(userAppDir(), '.installed.json');
 }
@@ -134,8 +140,8 @@ function platformBins(venvDir) {
 
 async function ensureInstalled(root) {
   // First-run bootstrap: create venv + pip install; npm install.
-  // For Windows offline builds we will ship a packaged backend exe and skip this.
-  ensureUserMirror();
+  // For Windows offline builds we ship a packaged backend exe and skip this.
+  if (process.platform !== 'win32') ensureUserMirror();
 
   const backendExe = path.join(root, 'backend-bin', process.platform === 'win32' ? 'holy-backend.exe' : 'holy-backend');
   if (fs.existsSync(backendExe)) {
@@ -176,7 +182,7 @@ async function ensureInstalled(root) {
 }
 
 async function startServices(root) {
-  ensureUserMirror();
+  if (process.platform !== 'win32') ensureUserMirror();
   const backend = path.join(root, 'backend');
   const frontend = path.join(root, 'frontend');
 
@@ -301,16 +307,17 @@ app.on('before-quit', () => {
 const { ipcMain } = require('electron');
 
 ipcMain.handle('install', async () => {
-  // Install into userData (writable) so we don't bloat the DMG and can update safely.
-  const root = userAppDir();
-  ensureUserMirror();
+  // Windows offline builds run directly from packaged resources.
+  // macOS builds use a userData mirror (writable).
+  const root = appRootDir();
+  if (process.platform !== 'win32') ensureUserMirror();
   await ensureInstalled(root);
   return { ok: true };
 });
 
 ipcMain.handle('start', async () => {
-  const root = userAppDir();
-  ensureUserMirror();
+  const root = appRootDir();
+  if (process.platform !== 'win32') ensureUserMirror();
   await startServices(root);
 
   const ok = await waitFor('http://127.0.0.1:8011/', 45000);
