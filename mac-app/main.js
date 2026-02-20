@@ -143,8 +143,18 @@ async function ensureInstalled(root) {
   // For Windows offline builds we ship a packaged backend exe and skip this.
   if (process.platform !== 'win32') ensureUserMirror();
 
-  const backendExe = path.join(root, 'backend-bin', process.platform === 'win32' ? 'holy-backend.exe' : 'holy-backend');
-  if (fs.existsSync(backendExe)) {
+  // Offline build fast-path: if we have a bundled backend exe, no install needed.
+  let backendExe = null;
+  if (process.platform === 'win32') backendExe = path.join(root, 'backend-bin', 'holy-backend.exe');
+  else if (process.platform === 'darwin') backendExe = path.join(root, 'backend-bin', `darwin-${process.arch}`, 'holy-backend');
+  else backendExe = path.join(root, 'backend-bin', 'holy-backend');
+
+  // Back-compat with older single-arch mac builds
+  if (process.platform === 'darwin' && backendExe && !fs.existsSync(backendExe)) {
+    backendExe = path.join(root, 'backend-bin', 'holy-backend');
+  }
+
+  if (backendExe && fs.existsSync(backendExe)) {
     sendLog('[skip] bundled backend exe detected (no install needed)\n');
     return;
   }
@@ -192,9 +202,21 @@ async function startServices(root) {
   const webDir = path.join(frontend, 'out');
   const serveWeb = fs.existsSync(path.join(webDir, 'index.html'));
 
-  // Preferred path for Windows offline builds: spawn bundled backend exe
-  const backendExe = path.join(root, 'backend-bin', process.platform === 'win32' ? 'holy-backend.exe' : 'holy-backend');
-  if (fs.existsSync(backendExe)) {
+  // Preferred path for offline builds: spawn bundled backend exe
+  // Windows: backend-bin/holy-backend.exe
+  // macOS Universal: backend-bin/darwin-arm64/holy-backend and backend-bin/darwin-x64/holy-backend
+  let backendExe = null;
+  if (process.platform === 'win32') {
+    backendExe = path.join(root, 'backend-bin', 'holy-backend.exe');
+  } else if (process.platform === 'darwin') {
+    backendExe = path.join(root, 'backend-bin', `darwin-${process.arch}`, 'holy-backend');
+    // Back-compat with older single-arch mac builds
+    if (!fs.existsSync(backendExe)) backendExe = path.join(root, 'backend-bin', 'holy-backend');
+  } else {
+    backendExe = path.join(root, 'backend-bin', 'holy-backend');
+  }
+
+  if (backendExe && fs.existsSync(backendExe)) {
     spawnLogged(backendExe, [], {
       cwd: path.dirname(backendExe),
       env: {
@@ -204,8 +226,9 @@ async function startServices(root) {
         HOLY_DATA_DIR: dataDir,
         HOLY_DEMUCS_MODEL: 'htdemucs_6s',
         HOLY_YTDLP_COOKIES_FROM_BROWSER: '',
-        HOLY_YTDLP_JS_RUNTIMES: 'node',
-        HOLY_YTDLP_REMOTE_COMPONENTS: 'ejs:github',
+        // Prefer a bundled JS runtime when available (deno recommended).
+        HOLY_YTDLP_JS_RUNTIMES: process.env.HOLY_YTDLP_JS_RUNTIMES || 'deno:vendor/deno,node',
+        HOLY_YTDLP_REMOTE_COMPONENTS: process.env.HOLY_YTDLP_REMOTE_COMPONENTS || 'ejs:github',
         HOLY_SERVE_WEB: serveWeb ? '1' : '0',
         HOLY_WEB_DIR: webDir,
       }

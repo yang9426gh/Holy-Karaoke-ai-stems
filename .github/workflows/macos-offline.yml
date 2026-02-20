@@ -1,0 +1,158 @@
+name: macos-offline-dmg
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main, master ]
+
+jobs:
+  build-backend:
+    name: Build backend (PyInstaller) ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Intel runner
+          - runner: macos-13
+            arch: x64
+          # Apple Silicon runner
+          - runner: macos-latest
+            arch: arm64
+    runs-on: ${{ matrix.runner }}
+
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: |
+            frontend/package-lock.json
+            mac-app/package-lock.json
+
+      - name: Build frontend static (Next export)
+        working-directory: frontend
+        run: |
+          npm ci
+          npm run build
+
+      - name: Download vendor binaries (ffmpeg, yt-dlp, deno)
+        working-directory: backend
+        run: |
+          set -euxo pipefail
+          rm -rf vendor
+          mkdir -p vendor
+
+          # ffmpeg/ffprobe (macOS universal build) - evermeet provides universal binaries
+          curl -L -o vendor/ffmpeg.zip https://evermeet.cx/ffmpeg/ffmpeg-7.1.1.zip
+          curl -L -o vendor/ffprobe.zip https://evermeet.cx/ffmpeg/ffprobe-7.1.1.zip
+          ditto -xk vendor/ffmpeg.zip vendor/_ffmpeg
+          ditto -xk vendor/ffprobe.zip vendor/_ffprobe
+          cp -f vendor/_ffmpeg/ffmpeg vendor/ffmpeg
+          cp -f vendor/_ffprobe/ffprobe vendor/ffprobe
+          chmod +x vendor/ffmpeg vendor/ffprobe
+          rm -rf vendor/_ffmpeg vendor/_ffprobe vendor/ffmpeg.zip vendor/ffprobe.zip
+
+          # yt-dlp (macOS universal binary)
+          curl -L -o vendor/yt-dlp https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp_macos
+          chmod +x vendor/yt-dlp
+
+          # deno (for yt-dlp EJS runtime). pick arch-specific binary.
+          DENO_ARCH="x86_64"; if [ "${{ matrix.arch }}" = "arm64" ]; then DENO_ARCH="aarch64"; fi
+          curl -L -o vendor/deno.zip "https://github.com/denoland/deno/releases/latest/download/deno-${DENO_ARCH}-apple-darwin.zip"
+          ditto -xk vendor/deno.zip vendor/_deno
+          cp -f vendor/_deno/deno vendor/deno
+          chmod +x vendor/deno
+          rm -rf vendor/_deno vendor/deno.zip
+
+      - name: Build backend exe (PyInstaller one-folder)
+        working-directory: backend
+        run: |
+          python -m pip install --upgrade pip wheel
+          python -m pip install -r requirements.txt
+          python -m pip install pyinstaller
+          pyinstaller -y pyinstaller_backend.spec
+
+      - name: Stage backend into backend-bin/
+        run: |
+          set -euxo pipefail
+          mkdir -p backend-bin/darwin-${{ matrix.arch }}
+          SRC="backend/dist/holy-backend/holy-backend"
+          if [ ! -f "$SRC" ]; then
+            echo "PyInstaller output missing: $SRC"; ls -la backend/dist/holy-backend || true; exit 1
+          fi
+          cp -f "$SRC" "backend-bin/darwin-${{ matrix.arch }}/holy-backend"
+          chmod +x "backend-bin/darwin-${{ matrix.arch }}/holy-backend"
+
+      - name: Upload backend artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-darwin-${{ matrix.arch }}
+          path: |
+            backend-bin/darwin-${{ matrix.arch }}/holy-backend
+            backend/vendor/**
+            frontend/out/**
+
+  build-dmg:
+    name: Build macOS Universal DMG
+    needs: [build-backend]
+    runs-on: macos-latest
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: mac-app/package-lock.json
+
+      - name: Download backend artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: _artifacts
+
+      - name: Assemble resources (backend-bin + vendor + frontend/out)
+        run: |
+          set -euxo pipefail
+          mkdir -p backend-bin/darwin-x64 backend-bin/darwin-arm64
+          cp -f _artifacts/backend-darwin-x64/backend-bin/darwin-x64/holy-backend backend-bin/darwin-x64/holy-backend
+          cp -f _artifacts/backend-darwin-arm64/backend-bin/darwin-arm64/holy-backend backend-bin/darwin-arm64/holy-backend
+          chmod +x backend-bin/darwin-x64/holy-backend backend-bin/darwin-arm64/holy-backend
+
+          # Use vendor + frontend/out from one artifact (they should be identical across arch)
+          rm -rf backend/vendor frontend/out
+          cp -R _artifacts/backend-darwin-arm64/backend/vendor backend/vendor
+          cp -R _artifacts/backend-darwin-arm64/frontend/out frontend/out
+
+      - name: Build Electron macOS DMG (universal)
+        working-directory: mac-app
+        run: |
+          npm ci
+          npm run dist:mac
+
+      - name: Upload DMG
+        uses: actions/upload-artifact@v4
+        with:
+          name: HolyKaraoke-macos-universal
+          path: |
+            mac-app/dist/*.dmg
+            mac-app/dist/*.yml
+            mac-app/dist/*.blockmap
