@@ -13,7 +13,7 @@ jobs:
       matrix:
         include:
           # Intel runner
-          - runner: macos-13
+          - runner: macos-12
             arch: x64
           # Apple Silicon runner
           - runner: macos-latest
