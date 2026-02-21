@@ -6,7 +6,7 @@
   "description": "Holy Karaoke (local)",
   "scripts": {
     "dev": "electron .",
-    "dist:mac": "electron-builder --mac dmg --universal",
+    "dist:mac": "electron-builder --mac dmg",
     "dist:win": "electron-builder --win nsis",
     "dist": "electron-builder"
   },
@@ -24,7 +24,7 @@
         {
           "target": "dmg",
           "arch": [
-            "universal"
+            "arm64"
           ]
         }
       ],
